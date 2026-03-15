@@ -1,0 +1,17 @@
+{
+  "name": "copilot-api",
+  "version": "1.0.0",
+  "description": "login copilot and call copilot api",
+  "license": "ISC",
+  "author": "Ang Yao",
+  "type": "module",
+  "main": "server.mjs",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "node-fetch": "^3.3.2",
+    "open": "^10.1.0"
+  }
+}
