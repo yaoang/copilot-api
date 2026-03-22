@@ -1,5 +1,6 @@
 import express from 'express';
 import fetch from 'node-fetch';
+import { HttpsProxyAgent } from 'https-proxy-agent';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -196,6 +197,17 @@ app.post('/api/chat', async (req, res) => {
 
     const { messages, fileContent, url } = req.body;
 
+    // 从环境变量读取代理配置
+    let fetchOptions = {};
+    const httpProxy = process.env.HTTP_PROXY || process.env.http_proxy;
+    const httpsProxy = process.env.HTTPS_PROXY || process.env.https_proxy;
+    const proxyUrl = httpsProxy || httpProxy;
+
+    if (proxyUrl) {
+      fetchOptions.agent = new HttpsProxyAgent(proxyUrl);
+      console.log('使用代理连接:', proxyUrl.replace(/\/\/.*@/, '//*****@')); // 隐藏密码
+    }
+
     // 如果传入了 URL，先抓取网页内容并注入到系统消息
     let systemContent = '';
     if (url) {
@@ -236,6 +248,7 @@ app.post('/api/chat', async (req, res) => {
         temperature: 0.1,
         max_tokens: 4096,
       }),
+      ...fetchOptions,
     });
 
     if (!copilotRes.ok) {

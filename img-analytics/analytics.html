@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pacer 跑步数据分析</title>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      padding: 20px;
+      max-width: 1200px;
+      margin: 0 auto;
+      background: #f5f5f5;
+    }
+    h1 {
+      color: #333;
+      margin-bottom: 30px;
+    }
+    .section {
+      background: white;
+      padding: 20px;
+      margin-bottom: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .section h2 {
+      font-size: 18px;
+      margin-bottom: 15px;
+      color: #555;
+    }
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 500;
+      color: #666;
+    }
+    input[type="date"],
+    input[type="file"],
+    input[type="text"],
+    input[type="password"],
+    textarea,
+    button {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    textarea {
+      font-family: monospace;
+      resize: vertical;
+      min-height: 100px;
+    }
+    button {
+      background: #0066cc;
+      color: white;
+      border: none;
+      cursor: pointer;
+      font-weight: 500;
+      margin-top: 10px;
+    }
+    button:hover {
+      background: #0052a3;
+    }
+    button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+    #logs {
+      background: #f9f9f9;
+      padding: 15px;
+      border-radius: 4px;
+      max-height: 300px;
+      overflow-y: auto;
+      font-family: monospace;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+    .log-entry {
+      margin-bottom: 5px;
+      color: #666;
+    }
+    .log-entry.success {
+      color: #28a745;
+    }
+    .log-entry.error {
+      color: #dc3545;
+    }
+    .log-entry.warning {
+      color: #ffc107;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 15px;
+    }
+    th, td {
+      padding: 12px;
+      text-align: left;
+      border-bottom: 1px solid #ddd;
+    }
+    th {
+      background: #f8f9fa;
+      font-weight: 600;
+      cursor: pointer;
+      user-select: none;
+    }
+    th:hover {
+      background: #e9ecef;
+    }
+    .warning-text {
+      color: #ffc107;
+      font-weight: 500;
+    }
+    .date-title {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 10px;
+      color: #333;
+    }
+    #imagePreview {
+      max-width: 100%;
+      margin-top: 10px;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Pacer 跑步数据分析</h1>
+
+  <div class="section">
+    <h2>1. 选择日期</h2>
+    <label for="date">日期:</label>
+    <input type="date" id="date">
+  </div>
+
+  <div class="section">
+    <h2>2. 上传图片</h2>
+    <label for="imageFile">选择图片文件:</label>
+    <input type="file" id="imageFile" accept="image/*">
+    <img id="imagePreview" style="display:none;">
+  </div>
+
+  <div class="section">
+    <h2>3. 组员名单</h2>
+    <label for="members">输入组员名字（每行一个）:</label>
+    <textarea id="members" placeholder="name1&#10;name2&#10;name3"></textarea>
+  </div>
+
+  <div class="section">
+    <button id="analyzeBtn">开始分析</button>
+  </div>
+
+  <div class="section">
+    <h2>操作日志</h2>
+    <div id="logs"></div>
+  </div>
+
+  <div class="section" id="resultSection" style="display:none;">
+    <h2>分析结果</h2>
+    <div id="resultContent"></div>
+  </div>
+
+  <script>
+    // 设置默认日期为昨天
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    document.getElementById('date').valueAsDate = yesterday;
+
+    // 图片预览
+    document.getElementById('imageFile').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const preview = document.getElementById('imagePreview');
+          preview.src = e.target.result;
+          preview.style.display = 'block';
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+
+    // 日志函数
+    function addLog(message, type = 'info') {
+      const logs = document.getElementById('logs');
+      const entry = document.createElement('div');
+      entry.className = `log-entry ${type}`;
+      entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+      logs.appendChild(entry);
+      logs.scrollTop = logs.scrollHeight;
+    }
+
+    // OCR 处理
+    async function performOCR(file) {
+      addLog('开始 OCR 识别...', 'info');
+      try {
+        const worker = await Tesseract.createWorker('chi_sim+eng');
+        const { data: { text } } = await worker.recognize(file);
+        await worker.terminate();
+        addLog('OCR 识别完成', 'success');
+        return text;
+      } catch (error) {
+        addLog(`OCR 识别失败: ${error.message}`, 'error');
+        throw error;
+      }
+    }
+
+    // 调用 Copilot API
+    async function callCopilotAPI(ocrText, members) {
+      addLog('正在调用 Copilot AI 分析数据...', 'info');
+
+      const memberList = members.split('\n').filter(m => m.trim()).map(m => m.trim());
+
+      const prompt = `请分析以下 OCR 识别的跑步排名数据，提取出每个人的步数，并与组员名单进行智能匹配。
+
+OCR 文本内容：
+${ocrText}
+
+组员名单：
+${memberList.map((m, i) => `${i + 1}. ${m}`).join('\n')}
+
+要求：
+1. 从 OCR 文本中提取出所有人的名字和步数.
+2. 将提取的名字与组员名单进行智能匹配（允许模糊匹配、拼音匹配等）.
+3. 按照组员名单的顺序输出结果.
+4. 如果某个组员在 OCR 文本中找不到匹配，steps 还是使用图片识别出来的结果，matched 设为 false.
+5. 如果匹配成功，matched 设为 true.
+6. ORC识别出来的有多少个组员(即有多少行数据)，结果都要输出，不能丢失任何一个组员的数据，即使跟名单对应不上也要输出，并且 matched 设为 false.
+7. 请严格按照以下 JSON 格式返回，不要添加任何其他文字：
+[
+  {"name": "name1", "steps": 12345, "matched": true},
+  {"name": "name2", "steps": 6789, "matched": true},
+  {"name": "name3", "steps": 0, "matched": false}
+]`;
+
+      try {
+        const requestBody = {
+          messages: [{ role: 'user', content: prompt }]
+        };
+
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody)
+        });
+
+        if (!response.ok) {
+          throw new Error(`API 调用失败: ${response.status}`);
+        }
+
+        let fullText = '';
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value);
+          const lines = chunk.split('\n');
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6);
+              if (data === '[DONE]') continue;
+              try {
+                const json = JSON.parse(data);
+                const content = json.choices?.[0]?.delta?.content || '';
+                fullText += content;
+              } catch (e) {
+                // 忽略解析错误
+              }
+            }
+          }
+        }
+
+        addLog('Copilot AI 分析完成', 'success');
+
+        // 提取 JSON - 尝试多种方式
+        let jsonData = null;
+
+        // 方式1: 直接查找数组格式 [...]
+        const arrayMatch = fullText.match(/\[\s*\{[\s\S]*?\}\s*\]/);
+        if (arrayMatch) {
+          try {
+            jsonData = JSON.parse(arrayMatch[0]);
+            addLog('成功提取 JSON 数据（数组格式）', 'success');
+          } catch (e) {
+            addLog(`JSON 解析失败: ${e.message}`, 'warning');
+          }
+        }
+
+        // 方式2: 查找对象格式 {...}
+        if (!jsonData) {
+          const objectMatch = fullText.match(/\{[\s\S]*"data"[\s\S]*\}/);
+          if (objectMatch) {
+            try {
+              const parsed = JSON.parse(objectMatch[0]);
+              if (parsed.data && Array.isArray(parsed.data)) {
+                jsonData = parsed.data;
+                addLog('成功提取 JSON 数据（对象格式）', 'success');
+              }
+            } catch (e) {
+              addLog(`JSON 解析失败: ${e.message}`, 'warning');
+            }
+          }
+        }
+
+        if (!jsonData) {
+          addLog('AI 响应内容: ' + fullText.substring(0, 500), 'info');
+          throw new Error('无法从 AI 响应中提取有效的 JSON 数据');
+        }
+
+        return jsonData;
+      } catch (error) {
+        addLog(`API 调用失败: ${error.message}`, 'error');
+        throw error;
+      }
+    }
+
+    // 显示结果表格
+    function displayResults(date, data) {
+      const resultSection = document.getElementById('resultSection');
+      const resultContent = document.getElementById('resultContent');
+
+      const dateStr = new Date(date).toLocaleDateString('zh-CN', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      });
+
+      let html = `<div class="date-title">${dateStr}</div>`;
+      html += '<table><thead><tr>';
+      html += '<th>member name</th>';
+      html += '<th id="stepsHeader" title="点击复制整列数据">steps</th>';
+      html += '</tr></thead><tbody>';
+
+      data.forEach(item => {
+        const nameClass = item.matched ? '' : 'warning-text';
+        html += `<tr>`;
+        html += `<td class="${nameClass}">${item.name}</td>`;
+        html += `<td>${item.steps}</td>`;
+        html += `</tr>`;
+      });
+
+      html += '</tbody></table>';
+      resultContent.innerHTML = html;
+      resultSection.style.display = 'block';
+
+      // 点击 steps 列头复制数据
+      document.getElementById('stepsHeader').addEventListener('click', () => {
+        const steps = data.map(item => item.steps).join('\n');
+        navigator.clipboard.writeText(steps).then(() => {
+          addLog('步数数据已复制到剪贴板', 'success');
+        }).catch(err => {
+          addLog(`复制失败: ${err.message}`, 'error');
+        });
+      });
+
+      addLog('结果显示完成', 'success');
+    }
+
+    // 主分析流程
+    document.getElementById('analyzeBtn').addEventListener('click', async () => {
+      const imageFile = document.getElementById('imageFile').files[0];
+      const members = document.getElementById('members').value.trim();
+      const date = document.getElementById('date').value;
+
+      // 验证输入
+      if (!imageFile) {
+        addLog('请先上传图片文件', 'error');
+        return;
+      }
+      if (!members) {
+        addLog('请输入组员名单', 'error');
+        return;
+      }
+      if (!date) {
+        addLog('请选择日期', 'error');
+        return;
+      }
+
+      const btn = document.getElementById('analyzeBtn');
+      btn.disabled = true;
+      btn.textContent = '分析中...';
+
+      try {
+        // 步骤 1: OCR 识别
+        const ocrText = await performOCR(imageFile);
+        addLog(`OCR 识别结果: ${ocrText.substring(0, 100)}...`, 'info');
+
+        // 步骤 2: 调用 Copilot AI
+        const result = await callCopilotAPI(ocrText, members);
+
+        // 步骤 3: 显示结果
+        displayResults(date, result);
+
+      } catch (error) {
+        addLog(`分析失败: ${error.message}`, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '开始分析';
+      }
+    });
+  </script>
+</body>
+</html>
