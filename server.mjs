@@ -27,21 +27,26 @@ app.use(express.static(__dirname));
 
 /** 从磁盘读取已保存的 token 信息 */
 function loadTokens() {
-  // try {
-  //   if (fs.existsSync(TOKEN_FILE)) {
-  //     return JSON.parse(fs.readFileSync(TOKEN_FILE, 'utf-8'));
-  //   }
-  // } catch (_) {}
-  // return null;
-  return tokens_value;
+  try {
+    if (fs.existsSync(TOKEN_FILE)) {
+      const data = JSON.parse(fs.readFileSync(TOKEN_FILE, 'utf-8'));
+      console.log('从文件加载 token');
+      return data;
+    }
+  } catch (err) {
+    console.error('读取 token 文件失败:', err.message);
+  }
+  return null;
 }
-
-let tokens_value = null;
 
 /** 将 token 信息持久化到磁盘 */
 function saveTokens(data) {
-  // fs.writeFileSync(TOKEN_FILE, JSON.stringify(data, null, 2));
-  tokens_value = data
+  try {
+    fs.writeFileSync(TOKEN_FILE, JSON.stringify(data, null, 2));
+    console.log('Token 已保存到文件:', TOKEN_FILE);
+  } catch (err) {
+    console.error('保存 token 文件失败:', err.message);
+  }
 }
 
 // ─── GitHub Device Flow 登录 ──────────────────────────────────────────────────
@@ -246,7 +251,7 @@ app.post('/api/chat', async (req, res) => {
         messages: finalMessages,
         stream: true,
         temperature: 0.1,
-        max_tokens: 4096,
+        max_tokens: 8192,
       }),
       ...fetchOptions,
     });

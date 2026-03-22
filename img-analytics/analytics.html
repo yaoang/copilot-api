@@ -282,6 +282,7 @@ ${memberList.map((m, i) => `${i + 1}. ${m}`).join('\n')}
         }
 
         addLog('Copilot AI 分析完成', 'success');
+        addLog(`AI 响应长度: ${fullText.length} 字符`, 'info');
 
         // 提取 JSON - 尝试多种方式
         let jsonData = null;
@@ -294,6 +295,22 @@ ${memberList.map((m, i) => `${i + 1}. ${m}`).join('\n')}
             addLog('成功提取 JSON 数据（数组格式）', 'success');
           } catch (e) {
             addLog(`JSON 解析失败: ${e.message}`, 'warning');
+            // 可能是 JSON 被截断了
+            addLog('尝试修复被截断的 JSON...', 'info');
+
+            // 尝试找到最后一个完整的对象
+            const incompleteJson = arrayMatch[0];
+            const lastCompleteObject = incompleteJson.lastIndexOf('},');
+            if (lastCompleteObject > 0) {
+              const fixedJson = incompleteJson.substring(0, lastCompleteObject + 1) + ']';
+              try {
+                jsonData = JSON.parse(fixedJson);
+                addLog(`成功修复 JSON，恢复了 ${jsonData.length} 条数据`, 'success');
+                addLog('注意：部分数据可能被截断，建议减少组员数量或简化名字', 'warning');
+              } catch (e2) {
+                addLog(`修复失败: ${e2.message}`, 'error');
+              }
+            }
           }
         }
 
@@ -314,7 +331,8 @@ ${memberList.map((m, i) => `${i + 1}. ${m}`).join('\n')}
         }
 
         if (!jsonData) {
-          addLog('AI 响应内容: ' + fullText.substring(0, 500), 'info');
+          addLog('AI 响应内容（前 500 字符）: ' + fullText.substring(0, 500), 'info');
+          addLog('AI 响应内容（后 500 字符）: ' + fullText.substring(Math.max(0, fullText.length - 500)), 'info');
           throw new Error('无法从 AI 响应中提取有效的 JSON 数据');
         }
 
